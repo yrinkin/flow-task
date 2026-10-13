@@ -1,34 +1,37 @@
 "use strict";
 
-// T04: localStorage에 저장하고, 설명·우선순위·마감일·검색·필터·지연 표시를 지원한다.
-// 수정과 삭제는 화면 순번이 아닌 id 기준으로 처리한다.
+// T08: 저장을 FastAPI 호출로 처리한다. 목록의 기준은 서버이며, 변경 후에는 서버 목록을 다시 불러온다.
+// 수정과 삭제는 화면 순번이 아닌 id 기준으로 처리한다. 지연 여부는 로컬 날짜 기준으로 화면에서 계산한다.
+// 이전 단계의 localStorage(task-flow-v1) 데이터는 이전하지 않으며 지우지도 않는다. (PRD: 자동 데이터 이전 없음)
+
+// 개발 단계 API 주소. 최종 배포(T14)에서는 Nginx 프록시를 거치는 "/api"로 바꾼다.
+const API_BASE = "http://127.0.0.1:8000/api";
+const REQUEST_TIMEOUT_MS = 5000;
 const TITLE_MAX_LENGTH = 100;
 const DESCRIPTION_MAX_LENGTH = 2000;
-const STORAGE_KEY = "task-flow-v1";
 const STATUS_LABELS = {
   TODO: "할 일",
   DOING: "진행 중",
   DONE: "완료",
 };
-const STATUSES = Object.keys(STATUS_LABELS);
-const DEFAULT_STATUS = "TODO";
 const PRIORITY_LABELS = {
   HIGH: "높음",
   NORMAL: "보통",
   LOW: "낮음",
 };
 const PRIORITIES = Object.keys(PRIORITY_LABELS);
-const DEFAULT_PRIORITY = "NORMAL";
-const SAVE_FAILED_MESSAGE = "저장에 실패했습니다. 브라우저 저장 공간을 확인하세요.";
+const CONNECTION_FAILED_MESSAGE = "API 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.";
 
+// 서버에서 받은 현재 필터 조건의 목록
 let tasks = [];
-// 저장값이 손상되었거나 저장소를 쓸 수 없으면 true. 이때는 기존 저장값을 덮어쓰지 않는다.
-let storageLocked = false;
+// 마지막 목록 요청 번호. 늦게 도착한 이전 요청의 응답은 무시한다.
+let loadSequence = 0;
+let searchTimer = null;
 // 수정 중인 항목의 id. 한 번에 하나만 수정한다.
 let editingId = null;
 // 수정 모드에 들어갈 때만 수정 입력란으로 포커스를 옮긴다. (검색 입력 중 포커스 이동 방지)
 let focusEditOnRender = false;
-// 검색·필터 조건은 저장하지 않는 화면 상태다.
+// 검색·필터 조건은 저장하지 않는 화면 상태이며, 서버 목록 조회 쿼리로 보낸다.
 const filters = { search: "", status: "", priority: "" };
 
 const form = document.getElementById("task-form");
@@ -39,20 +42,15 @@ const descriptionInput = document.getElementById("task-description");
 const submitButton = form.querySelector("button[type='submit']");
 const errorMessage = document.getElementById("form-error");
 const listError = document.getElementById("list-error");
-const storageError = document.getElementById("storage-error");
+const apiError = document.getElementById("api-error");
+const apiErrorMessage = document.getElementById("api-error-message");
+const retryButton = document.getElementById("api-retry");
 const searchInput = document.getElementById("filter-search");
 const statusFilter = document.getElementById("filter-status");
 const priorityFilter = document.getElementById("filter-priority");
 const taskList = document.getElementById("task-list");
 const taskCount = document.getElementById("task-count");
 const emptyMessage = document.getElementById("empty-message");
-
-function createId() {
-  if (window.crypto && typeof window.crypto.randomUUID === "function") {
-    return window.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
 
 function charLength(text) {
   return Array.from(text).length;
@@ -119,103 +117,120 @@ function readTaskFields({ title, description, priority, dueDate }) {
   return { error, values };
 }
 
-// 이전 단계에서 저장한 항목에는 일부 필드가 없을 수 있다.
-// 없는 필드는 허용하고 불러올 때 기본값으로 보며, 있는 필드는 형식을 검사한다.
-function isValidStoredTask(task) {
-  return (
-    task !== null &&
-    typeof task === "object" &&
-    typeof task.id === "string" &&
-    task.id !== "" &&
-    typeof task.title === "string" &&
-    task.title === task.title.trim() &&
-    validateTitle(task.title) === "" &&
-    typeof task.created_at === "string" &&
-    (!("status" in task) || STATUSES.includes(task.status)) &&
-    (!("description" in task) ||
-      (typeof task.description === "string" && validateDescription(task.description) === "")) &&
-    (!("priority" in task) || PRIORITIES.includes(task.priority)) &&
-    (!("due_date" in task) || validateDueDate(task.due_date) === "")
-  );
+class ApiError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
 }
 
-function withDefaults(task) {
-  return {
-    ...task,
-    description: task.description ?? "",
-    status: task.status ?? DEFAULT_STATUS,
-    priority: task.priority ?? DEFAULT_PRIORITY,
-    due_date: task.due_date ?? null,
-  };
+// 422 응답의 detail 배열에서 사용자에게 보여 줄 문구를 만든다.
+function validationMessage(data) {
+  if (!data || !Array.isArray(data.detail)) {
+    return "입력값이 올바르지 않습니다.";
+  }
+  return data.detail.map((item) => String(item.msg).replace(/^Value error, /, "")).join(" ");
 }
 
-// 저장값을 읽어 { ok, tasks, message } 형태로 반환한다.
-function loadTasks() {
-  let raw;
+// API를 호출하고 JSON 본문을 반환한다. 204는 null을 반환한다. 실패하면 ApiError를 던진다.
+async function request(path, { method = "GET", body } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response;
   try {
-    raw = window.localStorage.getItem(STORAGE_KEY);
-  } catch (error) {
-    return { ok: false, tasks: [], message: "브라우저 저장소를 사용할 수 없어 목록을 불러오거나 저장할 수 없습니다." };
-  }
-
-  if (raw === null) {
-    return { ok: true, tasks: [], message: "" };
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    parsed = undefined;
-  }
-
-  const ids = new Set();
-  const valid =
-    Array.isArray(parsed) &&
-    parsed.every((task) => {
-      if (!isValidStoredTask(task) || ids.has(task.id)) {
-        return false;
-      }
-      ids.add(task.id);
-      return true;
+    response = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
     });
-
-  if (!valid) {
-    return {
-      ok: false,
-      tasks: [],
-      message: `저장된 데이터(${STORAGE_KEY})가 손상되어 불러오지 못했습니다. 기존 데이터를 보호하기 위해 등록을 막았습니다.`,
-    };
+  } catch (error) {
+    throw new ApiError(0, CONNECTION_FAILED_MESSAGE);
+  } finally {
+    clearTimeout(timer);
   }
 
-  return { ok: true, tasks: parsed.map(withDefaults), message: "" };
+  if (response.status === 204) {
+    return null;
+  }
+  let data = null;
+  try {
+    data = await response.json();
+  } catch (error) {
+    data = null;
+  }
+  if (response.ok) {
+    return data;
+  }
+  if (response.status === 404) {
+    throw new ApiError(404, "항목을 찾을 수 없습니다. 이미 삭제되었을 수 있어 목록을 새로 불러옵니다.");
+  }
+  if (response.status === 422) {
+    throw new ApiError(422, validationMessage(data));
+  }
+  throw new ApiError(response.status, `서버 오류가 발생했습니다. (HTTP ${response.status})`);
 }
 
-// 새 목록을 저장하고, 성공했을 때만 화면의 목록을 바꾼다.
-function commitTasks(nextTasks) {
-  if (storageLocked) {
-    return false;
+function buildListQuery() {
+  const params = new URLSearchParams();
+  if (filters.search.trim() !== "") {
+    params.set("q", filters.search.trim());
   }
+  if (filters.status !== "") {
+    params.set("status", filters.status);
+  }
+  if (filters.priority !== "") {
+    params.set("priority", filters.priority);
+  }
+  const query = params.toString();
+  return query === "" ? "" : `?${query}`;
+}
+
+function showApiError(message) {
+  apiErrorMessage.textContent = message;
+  apiError.hidden = false;
+}
+
+function hideApiError() {
+  apiError.hidden = true;
+  apiErrorMessage.textContent = "";
+}
+
+// 현재 필터 조건으로 서버 목록을 불러와 화면에 반영한다. 성공하면 true를 반환한다.
+async function loadTasks() {
+  const sequence = ++loadSequence;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextTasks));
+    const data = await request(`/tasks${buildListQuery()}`);
+    if (sequence !== loadSequence) {
+      return true;
+    }
+    tasks = data;
+    hideApiError();
+    renderTasks();
+    return true;
   } catch (error) {
+    if (sequence === loadSequence) {
+      showApiError(error.message);
+    }
     return false;
   }
-  tasks = nextTasks;
-  return true;
+}
+
+// 변경 요청이 실패했을 때 오류를 알린다. 연결 실패는 상단 배너, 그 외는 목록 오류로 보여 준다.
+function reportActionError(error) {
+  if (error.status === 0) {
+    showApiError(error.message);
+  } else {
+    showListError(error.message);
+  }
+  if (error.status === 404) {
+    editingId = null;
+    loadTasks();
+  }
 }
 
 function isOverdue(task, today) {
   return task.due_date !== null && task.due_date < today && task.status !== "DONE";
-}
-
-function matchesFilters(task) {
-  const keyword = filters.search.trim().toLowerCase();
-  return (
-    (keyword === "" || task.title.toLowerCase().includes(keyword)) &&
-    (filters.status === "" || task.status === filters.status) &&
-    (filters.priority === "" || task.priority === filters.priority)
-  );
 }
 
 function showError(message) {
@@ -227,26 +242,20 @@ function showListError(message) {
   listError.textContent = message;
 }
 
-function lockStorage(message) {
-  storageLocked = true;
-  storageError.textContent = message;
-  storageError.hidden = false;
-  for (const element of [titleInput, priorityInput, dueDateInput, descriptionInput, submitButton]) {
-    element.disabled = true;
+async function changeStatus(id, status) {
+  try {
+    await request(`/tasks/${id}`, { method: "PATCH", body: { status } });
+    showListError("");
+  } catch (error) {
+    reportActionError(error);
+  }
+  // 실패한 경우에도 서버 목록으로 다시 그려 선택 상자를 실제 값으로 되돌린다.
+  if (!(await loadTasks())) {
+    renderTasks();
   }
 }
 
-function updateTask(id, changes) {
-  const nextTasks = tasks.map((task) => (task.id === id ? { ...task, ...changes } : task));
-  return commitTasks(nextTasks);
-}
-
-function changeStatus(id, status) {
-  showListError(updateTask(id, { status }) ? "" : SAVE_FAILED_MESSAGE);
-  renderTasks();
-}
-
-function deleteTask(id) {
+async function deleteTask(id) {
   const task = tasks.find((item) => item.id === id);
   if (!task) {
     return;
@@ -254,16 +263,17 @@ function deleteTask(id) {
   if (!window.confirm(`"${task.title}" 항목을 삭제할까요?`)) {
     return;
   }
-  const nextTasks = tasks.filter((item) => item.id !== id);
-  if (!commitTasks(nextTasks)) {
-    showListError(SAVE_FAILED_MESSAGE);
+  try {
+    await request(`/tasks/${id}`, { method: "DELETE" });
+  } catch (error) {
+    reportActionError(error);
     return;
   }
   if (editingId === id) {
     editingId = null;
   }
   showListError("");
-  renderTasks();
+  await loadTasks();
 }
 
 function createButton(label, onClick, className) {
@@ -273,7 +283,6 @@ function createButton(label, onClick, className) {
   if (className) {
     button.className = className;
   }
-  button.disabled = storageLocked;
   button.addEventListener("click", onClick);
   return button;
 }
@@ -333,7 +342,6 @@ function createViewRow(task, overdue) {
   controls.className = "task-controls";
 
   const statusSelect = createSelect(STATUS_LABELS, task.status, "상태", "status-select");
-  statusSelect.disabled = storageLocked;
   statusSelect.addEventListener("change", () => changeStatus(task.id, statusSelect.value));
 
   const editButton = createButton("수정", () => {
@@ -385,7 +393,11 @@ function createEditForm(task) {
     renderTasks();
   };
 
-  editForm.addEventListener("submit", (event) => {
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.textContent = "저장";
+
+  editForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const { error: message, values } = readTaskFields({
       title: titleField.value,
@@ -397,23 +409,27 @@ function createEditForm(task) {
       error.textContent = message;
       return;
     }
-    if (!updateTask(task.id, values)) {
-      error.textContent = SAVE_FAILED_MESSAGE;
+    saveButton.disabled = true;
+    try {
+      await request(`/tasks/${task.id}`, { method: "PATCH", body: values });
+    } catch (requestError) {
+      saveButton.disabled = false;
+      if (requestError.status === 404) {
+        reportActionError(requestError);
+      } else {
+        error.textContent = requestError.message;
+      }
       return;
     }
     editingId = null;
     showListError("");
-    renderTasks();
+    await loadTasks();
   });
   editForm.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       cancel();
     }
   });
-
-  const saveButton = document.createElement("button");
-  saveButton.type = "submit";
-  saveButton.textContent = "저장";
 
   const titleRow = document.createElement("div");
   titleRow.className = "edit-form-row";
@@ -434,9 +450,7 @@ function renderTasks() {
   taskList.replaceChildren();
   let editInput = null;
   const today = todayLocal();
-  const visibleTasks = tasks.filter(matchesFilters);
-
-  for (const task of visibleTasks) {
+  for (const task of tasks) {
     const overdue = isOverdue(task, today);
     const item = document.createElement("li");
     item.dataset.id = task.id;
@@ -445,7 +459,7 @@ function renderTasks() {
       item.className = "overdue";
     }
 
-    if (task.id === editingId && !storageLocked) {
+    if (task.id === editingId) {
       const editForm = createEditForm(task);
       item.appendChild(editForm.element);
       editInput = editForm.input;
@@ -455,19 +469,19 @@ function renderTasks() {
     taskList.appendChild(item);
   }
 
-  const filtered = visibleTasks.length !== tasks.length;
-  taskCount.textContent = filtered ? `(${visibleTasks.length} / 전체 ${tasks.length})` : `(${tasks.length})`;
-  emptyMessage.textContent = tasks.length === 0 ? "등록된 할 일이 없습니다." : "조건에 맞는 할 일이 없습니다.";
-  emptyMessage.hidden = visibleTasks.length > 0;
+  const filtered = filters.search.trim() !== "" || filters.status !== "" || filters.priority !== "";
+  taskCount.textContent = filtered ? `(검색 결과 ${tasks.length})` : `(${tasks.length})`;
+  emptyMessage.textContent = filtered ? "조건에 맞는 할 일이 없습니다." : "등록된 할 일이 없습니다.";
+  emptyMessage.hidden = tasks.length > 0;
   if (editInput && focusEditOnRender) {
     editInput.focus();
   }
   focusEditOnRender = false;
 }
 
-form.addEventListener("submit", (event) => {
+form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (storageLocked) {
+  if (submitButton.disabled) {
     return;
   }
 
@@ -483,40 +497,45 @@ form.addEventListener("submit", (event) => {
     return;
   }
 
-  const newTask = {
-    id: createId(),
-    ...values,
-    status: DEFAULT_STATUS,
-    created_at: new Date().toISOString(),
-  };
-
-  if (!commitTasks([...tasks, newTask])) {
-    showError(SAVE_FAILED_MESSAGE);
+  // 응답 전 중복 등록을 막는다.
+  submitButton.disabled = true;
+  try {
+    await request("/tasks", { method: "POST", body: values });
+  } catch (requestError) {
+    if (requestError.status === 0) {
+      showError("");
+      showApiError(requestError.message);
+    } else {
+      showError(requestError.message);
+    }
     return;
+  } finally {
+    submitButton.disabled = false;
   }
 
   showError("");
   form.reset();
   titleInput.focus();
-  renderTasks();
+  await loadTasks();
 });
 
+// 검색어는 입력이 잠시 멈춘 뒤 요청해 글자마다 요청하지 않는다.
 searchInput.addEventListener("input", () => {
   filters.search = searchInput.value;
-  renderTasks();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(loadTasks, 250);
 });
 statusFilter.addEventListener("change", () => {
   filters.status = statusFilter.value;
-  renderTasks();
+  loadTasks();
 });
 priorityFilter.addEventListener("change", () => {
   filters.priority = priorityFilter.value;
-  renderTasks();
+  loadTasks();
+});
+retryButton.addEventListener("click", () => {
+  loadTasks();
 });
 
-const loaded = loadTasks();
-tasks = loaded.tasks;
-if (!loaded.ok) {
-  lockStorage(loaded.message);
-}
 renderTasks();
+loadTasks();

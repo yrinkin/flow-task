@@ -113,7 +113,11 @@ h2 {
   font-size: 0.9rem;
 }
 
-.storage-error {
+.api-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 10px 12px;
   margin: 0 0 16px;
   border: 1px solid #f1b8b3;
@@ -121,6 +125,20 @@ h2 {
   background: #fdecea;
   color: #a1281f;
   font-size: 0.9rem;
+}
+
+.api-error[hidden] {
+  display: none;
+}
+
+.api-error button {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 1px solid #f1b8b3;
+  border-radius: 4px;
+  background: #fff;
+  color: #a1281f;
+  cursor: pointer;
 }
 
 .task-count {

@@ -10,7 +10,10 @@
   <main class="container">
     <h1>Task Flow</h1>
 
-    <p id="storage-error" class="storage-error" role="alert" hidden></p>
+    <div id="api-error" class="api-error" role="alert" hidden>
+      <span id="api-error-message"></span>
+      <button id="api-retry" type="button">다시 시도</button>
+    </div>
 
     <form id="task-form" class="task-form" novalidate>
       <div class="task-form-row">

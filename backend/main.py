@@ -8,10 +8,20 @@ from datetime import datetime, timezone
 from threading import Lock
 
 from fastapi import FastAPI, HTTPException, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.schemas import Priority, Status, Task, TaskCreate, TaskUpdate
 
 app = FastAPI(title="Task Flow API")
+
+# 개발 단계(T08~T11): 정적 서버(5500)의 화면이 API(8000)를 호출할 수 있도록 허용한다.
+# 최종 배포(T14)는 Nginx가 같은 주소의 /api로 프록시하므로 CORS가 필요 없다.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Content-Type"],
+)
 
 # 메모리 저장소. 요청은 스레드풀에서 동시에 처리될 수 있으므로 Lock으로 보호한다.
 tasks: list[Task] = []

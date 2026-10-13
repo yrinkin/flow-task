@@ -53,8 +53,15 @@
   없는 id 404, 검증 위반·null·id/created_at 변경 시도 422(데이터 변경 없음). GET q(대소문자 무시)+status+priority AND, 잘못된 값 422.
   DELETE 204·본문 없음, 다시 삭제·없는 id 404, 삭제 후 id 재사용 없음. T06 POST 검증 유지.
   사용자 /docs 확인(2026-10-13): PATCH 미전달 필드 유지, 없는 id 404, DELETE 204, 필터 정상. 남은 오류 없음.
-- [ ] T08: 프런트엔드 저장 처리를 API 호출로 교체.
+- [x] T08: 프런트엔드 저장 처리를 API 호출로 교체.
   확인: 화면과 curl 목록이 같음. API 중지 시 오류 표시.
+  기록(2026-10-13): 변경 파일 frontend/app.js(localStorage → fetch, 서버 목록 기준·필터는 서버 쿼리), index.html·styles.css(API 오류 배너·다시 시도),
+  backend/main.py(CORS: 127.0.0.1:5500, localhost:5500만 허용). 이전 localStorage 데이터는 이전·삭제하지 않음(PRD).
+  curl preflight: 5500 출처 200·허용 헤더, 다른 출처 400.
+  가짜 DOM + 실제 API(fetch) 21개 통과: 화면 등록 → 서버 저장, 화면 목록 = curl 목록(전체·필터), 상태·수정·삭제 PATCH/DELETE 반영,
+  필터 중 id 기준 수정·삭제, 삭제 취소 유지, 이미 삭제된 항목 404 안내, 서버 422 메시지 표시, 지연 표시 유지, HTML 글자 표시,
+  API 연결 불가·5초 시간 초과 시 오류 배너, 복구 후 [다시 시도].
+  사용자 브라우저 확인(2026-10-13): 화면과 curl 목록 일치, API 서버 중지 시 오류 표시 정상. 남은 오류 없음.
 ## 4장: DB
 - [ ] T09: MariaDB 전용 사용자·DB와 .env 준비. 접속 확인.
 - [ ] T10: backend/database.py, models.py, init_db.py 생성.
