@@ -72,8 +72,14 @@
   권한 확인용으로 만든 빈 테이블 _perm_check가 DROP 권한이 없어 남음 → 사용자가 sudo로 삭제, 테이블 0개 확인.
   오류: .env가 .env.example 내용(DB_PASSWORD=change-me)으로 바뀌어 접속 거부(1045). 사용자가 비밀번호를 새로 정해 .env와 DB 사용자에 반영.
   재확인(16:12): .env 권한 600, SELECT 1 → 1, CURRENT_USER task_flow_app, DATABASE task_flow, 테이블 0개. 남은 오류 없음.
-- [ ] T10: backend/database.py, models.py, init_db.py 생성.
+- [x] T10: backend/database.py, models.py, init_db.py 생성.
   확인: python -m backend.init_db 실행 후 tasks 테이블 확인.
+  기록(2026-10-13): 변경 파일 backend/database.py(.env 읽기·엔진), models.py(tasks 테이블), init_db.py(신규), requirements.txt(SQLAlchemy 2.1.4, PyMySQL 1.2.3, python-dotenv 1.2.4).
+  실행: .venv/bin/python -m backend.init_db → "tasks: 생성함", 다시 실행 → "tasks: 이미 있음(변경 없음)"(삭제·초기화 없음).
+  SQL 확인(task_flow_app): SHOW TABLES → tasks, InnoDB·utf8mb4_unicode_ci, 행 0개. DESCRIBE: id int AUTO_INCREMENT PK, title varchar(100), description varchar(2000) 기본 '',
+  status enum(TODO,DOING,DONE) 기본 TODO, priority enum(HIGH,NORMAL,LOW) 기본 NORMAL, due_date date NULL, created_at datetime(UTC, API가 입력).
+  환경변수 없을 때 "DB 접속 환경변수가 없습니다" 오류 안내 확인. sql_mode STRICT_TRANS_TABLES(잘못된 값 거절). API(main.py)는 아직 메모리 저장(T11에서 교체).
+  사용자 확인(2026-10-13): init_db 실행과 tasks 테이블 구조 정상. 남은 오류 없음.
 - [ ] T11: API 메모리 저장을 DB로 교체.
   확인: 등록한 행을 SQL로 조회. API 재시작 후 데이터 유지.
 ## 5장: 서버 분리

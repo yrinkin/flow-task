@@ -2,3 +2,9 @@
 fastapi==0.143.0
 # uvicorn: FastAPI 실행 서버. [standard]는 --reload 감시 등 개발 편의 기능 포함 (T05~)
 uvicorn[standard]==0.54.0
+# SQLAlchemy: DB 연결과 tasks 테이블 정의(ORM) (T10~)
+SQLAlchemy==2.1.4
+# PyMySQL: Python에서 MariaDB에 접속하는 드라이버 (T10~)
+PyMySQL==1.2.3
+# python-dotenv: .env의 DB 접속 정보를 환경변수로 읽기 (T10~)
+python-dotenv==1.2.4
