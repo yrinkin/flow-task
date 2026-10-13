@@ -46,8 +46,13 @@
   경계값 201: 제목 100자, 설명 2000자, due_date null, 2028-02-29. 거절된 요청은 id를 소비하지 않음. API 재시작 후 목록 []·id 1부터(메모리 단계 정상).
   /docs 기본 예시가 due_date "string"으로 422가 되어 스키마에 올바른 예시(examples) 추가. 검증 규칙은 변경 없음.
   사용자 /docs 확인(2026-10-13): due_date "string" 요청 422, 기본 예시 POST 201 후 GET 조회 정상. 남은 오류 없음.
-- [ ] T07: PATCH·DELETE와 필터 구현.
+- [x] T07: PATCH·DELETE와 필터 구현.
   확인: 미전달 필드 유지, 없는 ID 404, 삭제 204.
+  기록(2026-10-13): 변경 파일 backend/main.py(PATCH·DELETE·GET 필터), backend/schemas.py(TaskUpdate: 부분 수정, due_date만 null 허용).
+  HTTP 요청 점검 38개 통과: PATCH 미전달 필드 유지(id·created_at 포함), due_date null로 지움, 빈 본문 변경 없음, 다른 항목 변경 없음,
+  없는 id 404, 검증 위반·null·id/created_at 변경 시도 422(데이터 변경 없음). GET q(대소문자 무시)+status+priority AND, 잘못된 값 422.
+  DELETE 204·본문 없음, 다시 삭제·없는 id 404, 삭제 후 id 재사용 없음. T06 POST 검증 유지.
+  사용자 /docs 확인(2026-10-13): PATCH 미전달 필드 유지, 없는 id 404, DELETE 204, 필터 정상. 남은 오류 없음.
 - [ ] T08: 프런트엔드 저장 처리를 API 호출로 교체.
   확인: 화면과 curl 목록이 같음. API 중지 시 오류 표시.
 ## 4장: DB
