@@ -31,8 +31,13 @@
   새로고침 후 유지, 저장 실패 시 변경 없음, T01~T03 기능 유지.
   사용자 브라우저 확인(2026-10-13): 첫 확인은 브라우저가 이전 app.js 캐시(304)를 사용해 실패. 강력 새로고침 후 필터 중 수정·삭제, 어제 마감 TODO 지연 표시, 검색·필터 AND 정상. 남은 오류 없음.
 ## 3장: API
-- [ ] T05: API-SPEC.md 작성, FastAPI /api/health 구현.
+- [x] T05: API-SPEC.md 작성, FastAPI /api/health 구현.
   확인: curl로 200과 status=ok.
+  기록(2026-10-13): 변경 파일 API-SPEC.md(T05~T07 API 계약), backend/__init__.py, backend/main.py, requirements.txt(신규).
+  준비: python3 -m venv .venv, .venv/bin/python -m pip install -r requirements.txt (fastapi 0.143.0, uvicorn[standard] 0.54.0, Python 3.14.4).
+  실행: .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+  curl -i http://127.0.0.1:8000/api/health → 200, {"status":"ok"}. 없는 경로 404, /docs 200. .venv·__pycache__는 Git 제외 확인.
+  사용자 확인(2026-10-13): /api/health 응답 정상. 남은 오류 없음.
 - [ ] T06: 메모리 기반 /api/tasks GET과 POST.
   확인: /docs에서 등록 후 조회. 입력 위반은 422.
 - [ ] T07: PATCH·DELETE와 필터 구현.

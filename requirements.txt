@@ -1,0 +1,4 @@
+# FastAPI: API 서버 프레임워크 (T05~)
+fastapi==0.143.0
+# uvicorn: FastAPI 실행 서버. [standard]는 --reload 감시 등 개발 편의 기능 포함 (T05~)
+uvicorn[standard]==0.54.0
