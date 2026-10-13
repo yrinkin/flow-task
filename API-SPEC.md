@@ -84,3 +84,4 @@ PRD.md의 요구사항을 API 계약으로 정리한다. 구현 순서는 PLAN.m
 |---|---|
 | 404 | `{"detail": "Task not found"}` |
 | 422 | FastAPI 기본 검증 오류 형식 `{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}` |
+| 503 | `{"detail": "Database unavailable"}` (DB 단계, DB에 접속할 수 없을 때. 접속 정보는 응답에 넣지 않는다) |

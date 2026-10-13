@@ -80,8 +80,14 @@
   status enum(TODO,DOING,DONE) 기본 TODO, priority enum(HIGH,NORMAL,LOW) 기본 NORMAL, due_date date NULL, created_at datetime(UTC, API가 입력).
   환경변수 없을 때 "DB 접속 환경변수가 없습니다" 오류 안내 확인. sql_mode STRICT_TRANS_TABLES(잘못된 값 거절). API(main.py)는 아직 메모리 저장(T11에서 교체).
   사용자 확인(2026-10-13): init_db 실행과 tasks 테이블 구조 정상. 남은 오류 없음.
-- [ ] T11: API 메모리 저장을 DB로 교체.
+- [x] T11: API 메모리 저장을 DB로 교체.
   확인: 등록한 행을 SQL로 조회. API 재시작 후 데이터 유지.
+  기록(2026-10-13): 변경 파일 backend/main.py(메모리 → SQLAlchemy 세션, 요청마다 DB 세션), API-SPEC.md(503 추가). API 계약·프런트엔드 변경 없음.
+  실행 중인 8000 서버(--reload)가 DB 모드로 전환됨. T07 API 점검 39개, T08 화면 점검 21개를 DB 대상으로 재실행해 모두 통과.
+  SQL 조회 결과와 API 목록 일치(id·title·status·priority·due_date·created_at). 새 프로세스(8001)에서 같은 목록, 등록 후 종료·재시작해도 유지.
+  한글·이모지 저장, q의 %·_는 글자 그대로 검색, 대소문자 무시. DB 접속 불가(DB_PORT=3999)일 때 GET·POST 503, 로그·응답에 접속 정보 없음.
+  사용자 8000 API 재시작(16:23) 전후로 점검용 4개 행 유지 확인. 점검용 행 삭제 후 샘플 8개를 API로 재등록(PRD: 단계 간 자동 이전 없음), SQL 조회 일치.
+  사용자 브라우저 확인(2026-10-13): 샘플 표시·지연 표시(어제·5일 전 마감 미완료), 수정 후 API 재시작해도 유지. 남은 오류 없음.
 ## 5장: 서버 분리
 - [ ] T12: DB 서버 구성 후 App 서버에서 SELECT 1 확인.
 - [ ] T13: App 서버 코드·가상환경·환경변수·systemd 구성.

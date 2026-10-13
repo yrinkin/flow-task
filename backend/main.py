@@ -1,15 +1,21 @@
 """Task Flow API.
 
-T07: 메모리 저장 기반 /api/tasks 조회(검색·필터)·등록·수정·삭제. 명세는 API-SPEC.md를 따른다.
-메모리 단계이므로 API를 재시작하면 데이터가 사라진다.
+T11: MariaDB 저장 기반 /api/tasks 조회(검색·필터)·등록·수정·삭제. 명세는 API-SPEC.md를 따른다.
+DB 단계이므로 API를 재시작해도 데이터가 유지된다. 테이블은 python -m backend.init_db로 만든다.
 """
 
-from datetime import datetime, timezone
-from threading import Lock
+from collections.abc import Iterator
+from datetime import date, datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
+from backend.database import SessionLocal
+from backend.models import TaskRecord
 from backend.schemas import Priority, Status, Task, TaskCreate, TaskUpdate
 
 app = FastAPI(title="Task Flow API")
@@ -23,21 +29,47 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-# 메모리 저장소. 요청은 스레드풀에서 동시에 처리될 수 있으므로 Lock으로 보호한다.
-tasks: list[Task] = []
-next_id = 1
-store_lock = Lock()
+
+# DB에 접속할 수 없으면 원인을 알 수 없는 500 대신 503으로 알린다. 접속 정보는 응답에 넣지 않는다.
+@app.exception_handler(OperationalError)
+def database_unavailable(request: Request, exc: OperationalError) -> JSONResponse:
+    return JSONResponse(status_code=503, content={"detail": "Database unavailable"})
 
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def get_db() -> Iterator[Session]:
+    with SessionLocal() as db:
+        yield db
 
 
-def find_index(task_id: int) -> int:
-    for index, task in enumerate(tasks):
-        if task.id == task_id:
-            return index
-    raise HTTPException(status_code=404, detail="Task not found")
+def utc_now() -> datetime:
+    # DB의 DATETIME에는 시간대가 없으므로 UTC 기준 값을 초 단위로 저장한다.
+    return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+
+
+def to_task(record: TaskRecord) -> Task:
+    return Task(
+        id=record.id,
+        title=record.title,
+        description=record.description,
+        status=record.status,
+        priority=record.priority,
+        due_date=record.due_date.isoformat() if record.due_date else None,
+        created_at=record.created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+
+
+# API의 YYYY-MM-DD 문자열을 DB의 date 값으로 바꾼다.
+def to_db_values(values: dict) -> dict:
+    if values.get("due_date") is not None:
+        values = {**values, "due_date": date.fromisoformat(values["due_date"])}
+    return values
+
+
+def find_record(db: Session, task_id: int) -> TaskRecord:
+    record = db.get(TaskRecord, task_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return record
 
 
 @app.get("/api/health")
@@ -46,39 +78,45 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/tasks")
-def list_tasks(q: str | None = None, status: Status | None = None, priority: Priority | None = None) -> list[Task]:
-    keyword = (q or "").strip().casefold()
-    with store_lock:
-        return [
-            task
-            for task in tasks
-            if (keyword == "" or keyword in task.title.casefold())
-            and (status is None or task.status == status)
-            and (priority is None or task.priority == priority)
-        ]
+def list_tasks(
+    q: str | None = None,
+    status: Status | None = None,
+    priority: Priority | None = None,
+    db: Session = Depends(get_db),
+) -> list[Task]:
+    query = select(TaskRecord).order_by(TaskRecord.id)
+    keyword = (q or "").strip()
+    if keyword:
+        # 대소문자 무시는 DB 정렬 규칙(utf8mb4_unicode_ci)이 처리한다. %, _는 글자 그대로 검색한다.
+        query = query.where(TaskRecord.title.contains(keyword, autoescape=True))
+    if status is not None:
+        query = query.where(TaskRecord.status == status)
+    if priority is not None:
+        query = query.where(TaskRecord.priority == priority)
+    return [to_task(record) for record in db.scalars(query)]
 
 
 @app.post("/api/tasks", status_code=201)
-def create_task(payload: TaskCreate) -> Task:
-    global next_id
-    with store_lock:
-        task = Task(id=next_id, created_at=utc_now(), **payload.model_dump())
-        tasks.append(task)
-        next_id += 1
-    return task
+def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> Task:
+    record = TaskRecord(**to_db_values(payload.model_dump()), created_at=utc_now())
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return to_task(record)
 
 
 @app.patch("/api/tasks/{task_id}")
-def update_task(task_id: int, payload: TaskUpdate) -> Task:
-    with store_lock:
-        index = find_index(task_id)
-        task = tasks[index].model_copy(update=payload.changes())
-        tasks[index] = task
-    return task
+def update_task(task_id: int, payload: TaskUpdate, db: Session = Depends(get_db)) -> Task:
+    record = find_record(db, task_id)
+    for name, value in to_db_values(payload.changes()).items():
+        setattr(record, name, value)
+    db.commit()
+    db.refresh(record)
+    return to_task(record)
 
 
 @app.delete("/api/tasks/{task_id}", status_code=204)
-def delete_task(task_id: int) -> Response:
-    with store_lock:
-        del tasks[find_index(task_id)]
+def delete_task(task_id: int, db: Session = Depends(get_db)) -> Response:
+    db.delete(find_record(db, task_id))
+    db.commit()
     return Response(status_code=204)
