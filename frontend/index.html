@@ -13,14 +13,52 @@
     <p id="storage-error" class="storage-error" role="alert" hidden></p>
 
     <form id="task-form" class="task-form" novalidate>
-      <label for="task-title" class="visually-hidden">할 일 제목</label>
-      <input id="task-title" name="title" type="text" placeholder="할 일 제목 (1~100자)" autocomplete="off">
-      <button type="submit">등록</button>
+      <div class="task-form-row">
+        <label for="task-title" class="visually-hidden">할 일 제목</label>
+        <input id="task-title" name="title" type="text" placeholder="할 일 제목 (1~100자)" autocomplete="off">
+        <button type="submit">등록</button>
+      </div>
+      <div class="task-form-row task-form-details">
+        <label>
+          우선순위
+          <select id="task-priority" name="priority">
+            <option value="HIGH">높음</option>
+            <option value="NORMAL" selected>보통</option>
+            <option value="LOW">낮음</option>
+          </select>
+        </label>
+        <label>
+          마감일
+          <input id="task-due-date" name="due_date" type="date">
+        </label>
+      </div>
+      <label for="task-description" class="visually-hidden">설명</label>
+      <textarea id="task-description" name="description" rows="2" placeholder="설명 (선택, 최대 2000자)"></textarea>
     </form>
     <p id="form-error" class="form-error" role="alert" aria-live="polite"></p>
 
     <section aria-labelledby="list-heading">
       <h2 id="list-heading">할 일 목록 <span id="task-count" class="task-count">(0)</span></h2>
+
+      <div class="filters" role="search">
+        <label for="filter-search" class="visually-hidden">제목 검색</label>
+        <input id="filter-search" type="search" placeholder="제목 검색" autocomplete="off">
+        <label for="filter-status" class="visually-hidden">상태 필터</label>
+        <select id="filter-status">
+          <option value="">상태 전체</option>
+          <option value="TODO">할 일</option>
+          <option value="DOING">진행 중</option>
+          <option value="DONE">완료</option>
+        </select>
+        <label for="filter-priority" class="visually-hidden">우선순위 필터</label>
+        <select id="filter-priority">
+          <option value="">우선순위 전체</option>
+          <option value="HIGH">높음</option>
+          <option value="NORMAL">보통</option>
+          <option value="LOW">낮음</option>
+        </select>
+      </div>
+
       <p id="list-error" class="form-error" role="alert" aria-live="polite"></p>
       <p id="empty-message" class="empty-message">등록된 할 일이 없습니다.</p>
       <ul id="task-list" class="task-list"></ul>
