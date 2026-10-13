@@ -38,8 +38,14 @@
   실행: .venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
   curl -i http://127.0.0.1:8000/api/health → 200, {"status":"ok"}. 없는 경로 404, /docs 200. .venv·__pycache__는 Git 제외 확인.
   사용자 확인(2026-10-13): /api/health 응답 정상. 남은 오류 없음.
-- [ ] T06: 메모리 기반 /api/tasks GET과 POST.
+- [x] T06: 메모리 기반 /api/tasks GET과 POST.
   확인: /docs에서 등록 후 조회. 입력 위반은 422.
+  기록(2026-10-13): 변경 파일 backend/main.py(메모리 저장소·GET·POST), backend/schemas.py(신규, 입력 검증). 검색·필터 쿼리는 T07.
+  curl 확인: 빈 목록 200 [], 제목만 POST 201(공백 제거·기본값), 전체 필드 POST 201, GET 목록 일치.
+  422 16종 통과: 제목 누락·빈 값·공백·101자·null·숫자, 설명 2001자·null, 잘못된 status·priority, 날짜 형식·없는 날짜·ISO 주차, id·created_at 전송, JSON 깨짐.
+  경계값 201: 제목 100자, 설명 2000자, due_date null, 2028-02-29. 거절된 요청은 id를 소비하지 않음. API 재시작 후 목록 []·id 1부터(메모리 단계 정상).
+  /docs 기본 예시가 due_date "string"으로 422가 되어 스키마에 올바른 예시(examples) 추가. 검증 규칙은 변경 없음.
+  사용자 /docs 확인(2026-10-13): due_date "string" 요청 422, 기본 예시 POST 201 후 GET 조회 정상. 남은 오류 없음.
 - [ ] T07: PATCH·DELETE와 필터 구현.
   확인: 미전달 필드 유지, 없는 ID 404, 삭제 204.
 - [ ] T08: 프런트엔드 저장 처리를 API 호출로 교체.
