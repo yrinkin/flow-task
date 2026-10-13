@@ -63,7 +63,15 @@
   API 연결 불가·5초 시간 초과 시 오류 배너, 복구 후 [다시 시도].
   사용자 브라우저 확인(2026-10-13): 화면과 curl 목록 일치, API 서버 중지 시 오류 표시 정상. 남은 오류 없음.
 ## 4장: DB
-- [ ] T09: MariaDB 전용 사용자·DB와 .env 준비. 접속 확인.
+- [x] T09: MariaDB 전용 사용자·DB와 .env 준비. 접속 확인.
+  기록(2026-10-13): MariaDB 11.8.6(설치·실행 중, 127.0.0.1:3306). 변경 파일 .env.example(신규, 가짜 값), .env(Git 제외, 권한 600, 무작위 비밀번호).
+  사용자 실행(sudo mariadb): DB task_flow(utf8mb4_unicode_ci), 사용자 task_flow_app@localhost·@127.0.0.1,
+  권한 task_flow.*에 SELECT·INSERT·UPDATE·DELETE·CREATE·ALTER·INDEX(DROP 없음). 비밀번호는 .env에서 읽어 명령 기록에 남기지 않음.
+  접속 확인(.env 값, TCP 127.0.0.1): SELECT 1 → 1, CURRENT_USER task_flow_app, DATABASE task_flow, 테이블 0개.
+  권한 확인: mysql.user 조회 거부(1142), DROP 거부(1142), 틀린 비밀번호 거부(1045).
+  권한 확인용으로 만든 빈 테이블 _perm_check가 DROP 권한이 없어 남음 → 사용자가 sudo로 삭제, 테이블 0개 확인.
+  오류: .env가 .env.example 내용(DB_PASSWORD=change-me)으로 바뀌어 접속 거부(1045). 사용자가 비밀번호를 새로 정해 .env와 DB 사용자에 반영.
+  재확인(16:12): .env 권한 600, SELECT 1 → 1, CURRENT_USER task_flow_app, DATABASE task_flow, 테이블 0개. 남은 오류 없음.
 - [ ] T10: backend/database.py, models.py, init_db.py 생성.
   확인: python -m backend.init_db 실행 후 tasks 테이블 확인.
 - [ ] T11: API 메모리 저장을 DB로 교체.
