@@ -102,6 +102,76 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.task-row,
+.edit-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-list li[data-status="DONE"] .task-title {
+  color: #888;
+  text-decoration: line-through;
+}
+
+.edit-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 1rem;
+  border: 1px solid #c8ccd2;
+  border-radius: 4px;
+}
+
+.edit-form input[aria-invalid="true"] {
+  border-color: #d93025;
+}
+
+.task-list select,
+.task-list button {
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  border: 1px solid #c8ccd2;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.task-list button:hover {
+  background: #f0f2f5;
+}
+
+.task-list button.danger {
+  border-color: #f1b8b3;
+  color: #a1281f;
+}
+
+.task-list button:disabled,
+.task-list select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.task-list .form-error {
+  min-height: 0;
+}
+
+@media (max-width: 480px) {
+  .task-row,
+  .edit-form {
+    flex-wrap: wrap;
+  }
+
+  .task-title {
+    flex-basis: 100%;
+  }
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
