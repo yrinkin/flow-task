@@ -6,10 +6,12 @@ DB 단계이므로 API를 재시작해도 데이터가 유지된다. 테이블�
 
 from collections.abc import Iterator
 from datetime import date, datetime, timezone
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -19,6 +21,8 @@ from backend.models import TaskRecord
 from backend.schemas import Priority, Status, Task, TaskCreate, TaskUpdate
 
 app = FastAPI(title="Task Flow API")
+
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 # 개발 단계(T08~T11): 정적 서버(5500)의 화면이 API(8000)를 호출할 수 있도록 허용한다.
 # 최종 배포(T14)는 Nginx가 같은 주소의 /api로 프록시하므로 CORS가 필요 없다.
@@ -120,3 +124,9 @@ def delete_task(task_id: int, db: Session = Depends(get_db)) -> Response:
     db.delete(find_record(db, task_id))
     db.commit()
     return Response(status_code=204)
+
+
+# 개발 편의: 화면 파일(frontend/)도 같은 포트(8000)에서 내보내 주소 하나로 접속한다. (ngrok 등)
+# API 경로를 먼저 등록했으므로 /api 요청은 위의 엔드포인트가 처리한다. 반드시 맨 마지막에 둔다.
+# 최종 배포(T14)에서는 Web 서버의 Nginx가 화면 파일을 내보내고 /api만 App 서버로 프록시한다.
+app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

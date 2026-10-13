@@ -4,8 +4,8 @@
 // 수정과 삭제는 화면 순번이 아닌 id 기준으로 처리한다. 지연 여부는 로컬 날짜 기준으로 화면에서 계산한다.
 // 이전 단계의 localStorage(task-flow-v1) 데이터는 이전하지 않으며 지우지도 않는다. (PRD: 자동 데이터 이전 없음)
 
-// 개발 단계 API 주소. 최종 배포(T14)에서는 Nginx 프록시를 거치는 "/api"로 바꾼다.
-const API_BASE = "http://127.0.0.1:8000/api";
+// 화면을 받은 주소의 /api로 요청한다. (FastAPI 8000 통합 실행, 최종 배포의 Nginx 프록시 모두 같은 주소)
+const API_BASE = "/api";
 const REQUEST_TIMEOUT_MS = 5000;
 const TITLE_MAX_LENGTH = 100;
 const DESCRIPTION_MAX_LENGTH = 2000;
